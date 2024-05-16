@@ -9,6 +9,7 @@ from langchain.prompts import PromptTemplate
 from langchain_community.llms import Ollama
 from googleapiclient.discovery import build
 import base64
+from cleantext import clean
 
 # Function to authenticate with Gmail API and get service
 def get_gmail_service():
@@ -64,28 +65,32 @@ def create_draft(service, sender, recipient, subject, body):
     return draft_id, message
 
 # Function to get the response back from LLM
-def get_llm_response(form_input, resume_text, email_sender, email_recipient, email_style, email_recipient_name, email_subject):
+def get_llm_response(form_input, job_description, resume_text, email_sender, email_recipient, email_style, email_recipient_name, email_subject):
     service = get_gmail_service()
 
     llm = Ollama(model="llama3")
     
+    # Clean the resume text
+    resume_text = clean(resume_text, lower=True, no_line_breaks=True, no_punct=True, lang="en")
+    
     # Template for building the PROMPT
     template ="""
     Write an email on the topic: "{email_topic}" with {style} style, ensuring grammatically correct and complete sentences. Sentences should not be broken in the middle and should flow naturally.
-    Write experience and skills from : "{resume_text}"
+
+    Explain briefly my skills and experience from "{resume_text}", also add only those requirements that I fulfill from the job description of the company "{job_description}" with proof of experience from the resume, do not do hallucination and do not mention false details that I don't fulfill from my resume.
+    
     **From:** {sender}
     **To:** {recipient}
-    
     """
 
     # Creating the final PROMPT
     prompt = PromptTemplate(
-        input_variables=["style", "email_topic", "sender", "subject", "recipient", "resume_text"],
+        input_variables=["style", "email_topic", "sender", "subject", "recipient", "job_description", "resume_text"],
         template=template
     )
   
     # Generating the response using LLM
-    email_body = llm(prompt.format(email_topic=form_input, sender=email_sender, recipient=email_recipient_name, subject=email_subject, style=email_style, resume_text=resume_text))
+    email_body = llm(prompt.format(email_topic=form_input, sender=email_sender, recipient=email_recipient_name, subject=email_subject, style=email_style, resume_text=resume_text, job_description=job_description))
     print(email_body)
 
     # Create a draft with the email content
@@ -113,6 +118,7 @@ with st.sidebar:
                                 ('Formal', 'Informal', 'Angry', 'Appreciating', 'Not Satisfied', 'Neutral'),
                                     index=0)
     resume_file = st.file_uploader("Upload Resume (PDF or Word)", type=["pdf", "docx"])
+    job_description = st.text_area('Enter the job description')
     submit = st.button("Generate")
 
 # Main content
@@ -126,14 +132,16 @@ if submit:
         else:
             st.error("Unsupported file format. Please upload either a PDF or Word file.")
             st.stop()
-        
-        st.write("Resume Text:")
-        st.write(resume_text)
     else:
         # If no file is uploaded, set resume_text to an empty string
         resume_text = ""
     
-    draft_id, draft_content = get_llm_response(form_input, resume_text, email_sender, email_recipient, email_style, email_recipient_name, email_subject)
+    draft_id, draft_content = get_llm_response(form_input, job_description, resume_text, email_sender, email_recipient, email_style, email_recipient_name, email_subject)
     st.success(f'Draft created with ID: {draft_id}')
     st.info("Draft Content:")
     st.code(draft_content)  # Display draft message content
+
+# Run the Streamlit app with correct port
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8501))
+    st.run_app(port=port)

@@ -1,1 +1,1 @@
-web: streamlit run descriptiontest.py
+web: streamlit run herokudeploy.py
